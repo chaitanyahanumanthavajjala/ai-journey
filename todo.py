@@ -1,4 +1,4 @@
-tasks = []
+import json
 
 def add_task():
     task = input("Enter a task: ")
@@ -8,6 +8,7 @@ def add_task():
     task_dic = {"task": task.strip(), "completed": False}
     tasks.append(task_dic)
     print(f"Added: {task.strip()} to task list.")
+    save_tasks()
     
 def view_tasks():
     if not tasks:
@@ -15,7 +16,7 @@ def view_tasks():
     else:
         for i, task in enumerate(tasks, start=1):
             status = "[X]" if task["completed"] else "[ ]"
-            print(f"{i}. {task['task']}{status}")
+            print(f"{i}. {task['task']}  {status}")
         print(f"Total tasks: {len(tasks)}")
 
 def mark_complete():
@@ -28,6 +29,7 @@ def mark_complete():
         if 0 <= task_index < len(tasks):
             tasks[task_index]["completed"] = True
             print(f"Marked as complete: {tasks[task_index]['task']}")
+            save_tasks()
         else:
             print("Invalid task number.")
     except ValueError:
@@ -43,17 +45,29 @@ def delete_task():
         if 0 <= task_index < len(tasks):
             print(f"Deleted: {tasks[task_index]['task']}")
             del tasks[task_index]
+            save_tasks()
         else:
             print("Invalid task number.")
     except ValueError:
         print("Please enter a valid task number.")
 
+def save_tasks():
+    with open("tasks.json", "w") as f:
+        json.dump(tasks, f)
+
+def load_tasks():
+    global tasks
+    try:
+        with open("tasks.json", "r") as f:
+            tasks = json.load(f)
+    except FileNotFoundError:
+        tasks = []
 
 def main():
+    load_tasks()
     while True:
         print("\n1. Add task\n2. View tasks\n3. Mark task as complete\n4. Delete task\n5. Quit")
         choice = input("Choose an option: ")
-
         if choice == "1":
             add_task()
         elif choice == "2":
