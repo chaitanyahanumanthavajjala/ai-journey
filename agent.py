@@ -99,7 +99,25 @@ while True:
         break
     messages.append({"role": "user", "content": user_input})
 
+    MAX_ITERATIONS = 5
+    iteration = 0
+
     while True:
+
+        iteration += 1
+        if iteration > MAX_ITERATIONS:
+            print("GUARDRAIL TRIGGERED: Too many tool calls without a final answer. Forcing a text response.")
+            messages.append({
+                "role": "user",
+                "content": "You've made several tool calls without finishing. Please answer now with your best response based on what you know, without calling any more tools."
+            })
+            response = client.messages.create(
+                model="claude-sonnet-4-5",
+                max_tokens=500,
+                messages=messages  # no tools= here — forces a text answer
+                )
+            messages.append({"role": "assistant", "content": response.content})
+            break
         response = client.messages.create(
             model="claude-sonnet-4-5",
             max_tokens=500,
