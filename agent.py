@@ -8,6 +8,14 @@ import math
 from dotenv import load_dotenv
 load_dotenv()
 
+SYSTEM_PROMPT = """You have access to three tools: calculate, get_tasks, and search_documents.
+Always use search_documents to check the user's notes before answering any conceptual or
+informational question from your own general knowledge, even if you're confident you already
+know the answer. If the notes don't contain relevant information, say so explicitly rather than
+silently answering from your own knowledge instead.
+Always use calculate for arithmetic instead of computing it yourself.
+Always use get_tasks when asked about tasks or to-dos."""
+
 def cosine_similarity(a, b):
     dot_product = sum(x * y for x, y in zip(a, b))
     magnitude_a = math.sqrt(sum(x**2 for x in a))
@@ -18,17 +26,33 @@ with open("rl_primer.txt", "r") as f:
     text = f.read()
 
 doc_chunks = [chunk.strip() for chunk in text.split("\n\n") if chunk.strip()]
-for i, chunk in enumerate(doc_chunks):
-    print(f"Chunk {i}: {chunk[:60]}...")
+#for i, chunk in enumerate(doc_chunks):
+#   print(f"Chunk {i}: {chunk[:60]}...")
 
 client = anthropic.Anthropic()
 vo = voyageai.Client()
-doc_result = vo.embed(doc_chunks, model="voyage-4", input_type="document")
-doc_embeddings = doc_result.embeddings
 
-for i, embedding in enumerate(doc_result.embeddings):
-    print(f"Chunk {i}: {len(embedding)} numbers, starts with {embedding[:5]}")
+CACHE_FILE = "doc_embeddings_cache.json"
+# doc_chunks gets built the same way as always, from rl_primer.txt — that part's free, no API call
+# then, instead of unconditionally calling vo.embed(...):
+cached = None
+try:
+    with open(CACHE_FILE, "r") as f:
+        cached = json.load(f)
+except FileNotFoundError:
+    pass
 
+if cached and cached["chunks"] == doc_chunks:
+    doc_embeddings = cached["embeddings"]
+else:
+    doc_result = vo.embed(doc_chunks, model="voyage-4", input_type="document")
+    doc_embeddings = doc_result.embeddings
+    with open(CACHE_FILE, "w") as f:
+        json.dump({"chunks": doc_chunks, "embeddings": doc_embeddings}, f)
+
+
+#for i, embedding in enumerate(doc_result.embeddings):
+#   print(f"Chunk {i}: {len(embedding)} numbers, starts with {embedding[:5]}")
 
 tools = [
     {
@@ -90,45 +114,41 @@ def search_documents(query):
     best_index, best_score = max(scores, key=lambda x: x[1])
     return doc_chunks[best_index]
 
-messages = []
-
-print("Type 'quit' to exit.")
-while True:
-    user_input = input("You: ")
-    if user_input.lower() == "quit":
-        break
+def ask_agent(user_input, messages):
     messages.append({"role": "user", "content": user_input})
 
     MAX_ITERATIONS = 5
     iteration = 0
 
     while True:
-
         iteration += 1
+        #print(f"Iteration: {iteration} for user input: {user_input}")
         if iteration > MAX_ITERATIONS:
             print("GUARDRAIL TRIGGERED: Too many tool calls without a final answer. Forcing a text response.")
             messages.append({
                 "role": "user",
                 "content": "You've made several tool calls without finishing. Please answer now with your best response based on what you know, without calling any more tools."
             })
-            response = client.messages.create(
-                model="claude-sonnet-4-5",
+            
+            response = client.messages.create(model="claude-sonnet-4-5",
                 max_tokens=500,
-                messages=messages  # no tools= here — forces a text answer
+                messages=messages,
+                system=SYSTEM_PROMPT  # no tools= here — forces a text answer
                 )
             messages.append({"role": "assistant", "content": response.content})
             break
-        response = client.messages.create(
-            model="claude-sonnet-4-5",
-            max_tokens=500,
-            tools=tools,
-            messages=messages
-        )
 
+        response = client.messages.create(model="claude-sonnet-4-5", 
+                max_tokens=500,
+                tools=tools,
+                system=SYSTEM_PROMPT,
+                messages=messages
+                )
         messages.append({"role": "assistant", "content": response.content})
 
         if response.stop_reason != "tool_use":
-            break  # Claude has a real answer, stop looping
+            break
+        print(f"Tool use detected for query: {user_input}. Processing tool calls...")
 
         tool_results = []
         for block in response.content:
@@ -143,6 +163,7 @@ while True:
                     else:
                         result = f"Unknown tool: {block.name}"
                 except Exception as e:
+                    print(f"Tool failed with exception: {e}")
                     result = f"Tool failed: {e}"
 
                 tool_results.append({
@@ -150,11 +171,22 @@ while True:
                     "tool_use_id": block.id,
                     "content": result
                 })
-
         messages.append({"role": "user", "content": tool_results})
+        # no break here — let the while loop go around again
 
-    for block in response.content:
-        if block.type == "text":
-            print(block.text)
+
+    final_text = "".join(block.text for block in response.content if block.type == "text")
+    return final_text
+
+if __name__ == "__main__":
+    messages = []
+    print("Type 'quit' to exit.")
+    while True:
+        user_input = input("You: ")
+        if user_input.lower() == "quit":
+            break    
+        reply = ask_agent(user_input, messages)
+        print(f"Agent: {reply}")
+
 
     
