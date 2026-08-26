@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-journey-agent-learning"
+version = "0.1.0"
+dependencies = [
+    "anthropic>=0.122.0",
+    "voyageai>=0.5.0",
+    "python-dotenv==1.2.2",
+]
+
+[project.scripts]
+agent = "agent:main"
+
+[tool.setuptools]
+py-modules = ["agent"]

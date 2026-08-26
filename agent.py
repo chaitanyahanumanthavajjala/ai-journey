@@ -215,7 +215,7 @@ def ask_agent(user_input, messages):
     final_text = "".join(block.text for block in response.content if block.type == "text")
     return final_text
 
-if __name__ == "__main__":
+def main():
     messages = []
     print("Type 'quit' to exit.")
     while True:
@@ -225,5 +225,6 @@ if __name__ == "__main__":
         reply = ask_agent(user_input, messages)
         print(f"Agent: {reply}")
 
-
+if __name__ == "__main__":
+    main()
     
